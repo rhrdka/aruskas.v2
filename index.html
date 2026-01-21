@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cashflow Manager by dika</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <div id="authContainer" class="auth-overlay">
+        <div class="auth-box">
+            <div class="logo-area" style="justify-content: center; margin-bottom: 32px; padding: 0;">
+                <div class="logo-icon"><i class="ph ph-wallet"></i></div>
+                <div class="logo-text">CASHFLOW</div>
+            </div>
+            
+            <div id="loginFormSection">
+                <h2 style="margin-bottom: 8px; color: var(--text-main);">Selamat Datang</h2>
+                <p style="color: var(--text-sub); margin-bottom: 24px;">Kelola keuangan Anda dengan profesional.</p>
+                <form id="loginForm">
+                    <div class="input-group">
+                        <label>Email Address</label>
+                        <input type="email" id="loginEmail" required placeholder="name@company.com">
+                    </div>
+                    <div class="input-group">
+                        <label>Password</label>
+                        <input type="password" id="loginPassword" required placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 14px; font-size: 1rem;" id="loginBtn">Masuk Aplikasi</button>
+                </form>
+                <div style="margin-top: 24px; font-size: 0.95rem; color: var(--text-sub);">
+                    Belum punya akun? <a href="#" style="color: var(--primary); font-weight: 700;" onclick="toggleAuth('register')">Daftar Sekarang</a>
+                </div>
+            </div>
+
+            <div id="registerFormSection" class="hidden">
+                <h2 style="margin-bottom: 8px; color: var(--text-main);">Buat Akun Baru</h2>
+                <p style="color: var(--text-sub); margin-bottom: 24px;">Mulai perjalanan finansial Anda.</p>
+                <form id="registerForm">
+                    <div class="input-group">
+                        <label>Nama Lengkap</label>
+                        <input type="text" id="registerName" required placeholder="John Doe">
+                    </div>
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" id="registerEmail" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Password</label>
+                        <input type="password" id="registerPassword" required minlength="6">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 14px; font-size: 1rem;" id="registerBtn">Daftar Akun</button>
+                </form>
+                <div style="margin-top: 24px; font-size: 0.95rem; color: var(--text-sub);">
+                    Sudah punya akun? <a href="#" style="color: var(--primary); font-weight: 700;" onclick="toggleAuth('login')">Login</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="appContainer" class="app-wrapper hidden">
+        <aside class="sidebar" id="sidebar">
+            <div class="logo-area">
+                <div class="logo-icon"><i class="ph ph-wallet"></i></div>
+                <div class="logo-text">Cashflow Pro</div>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" onclick="switchPage('dashboard', this)">
+                    <i class="ph ph-squares-four"></i> Dashboard
+                </button>
+                <button class="nav-item" onclick="switchPage('input', this)">
+                    <i class="ph ph-plus-circle"></i> Input Transaksi
+                </button>
+                <button class="nav-item" onclick="switchPage('history', this)">
+                    <i class="ph ph-list-dashes"></i> Riwayat & Data
+                </button>
+                <button class="nav-item" onclick="switchPage('analytics', this)">
+                    <i class="ph ph-chart-pie-slice"></i> Analisis Detail
+                </button>
+            </nav>
+
+            <div class="theme-toggle-area">
+                <button class="theme-btn" onclick="toggleTheme()">
+                    <i class="ph ph-moon" id="themeIcon"></i> <span id="themeText">Dark Mode</span>
+                </button>
+            </div>
+
+            <div class="user-profile">
+                <div class="avatar" id="userAvatar">U</div>
+                <div style="flex: 1; overflow: hidden;">
+                    <div class="t-main"><h4 id="userName" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">User</h4></div>
+                    <div class="t-sub" id="userEmail" style="font-size: 0.75rem;">user@mail.com</div>
+                </div>
+                <button onclick="logout()" style="border: none; background: none; color: var(--danger); cursor: pointer; padding: 8px;">
+                    <i class="ph ph-sign-out" style="font-size: 1.4rem;"></i>
+                </button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <div style="display: flex; align-items: center; width: 100%;">
+                    <button class="mobile-menu-btn" onclick="toggleSidebar()"><i class="ph ph-list"></i></button>
+                    <div class="page-title" style="margin-left: 10px;">
+                        <h1 id="pageTitle">Dashboard</h1>
+                        <p id="currentDate">Memuat tanggal...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="dashboardPage" class="page-section">
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon bg-income"><i class="ph ph-arrow-up-right"></i></div>
+                        <div class="stat-label">Total Pemasukan</div>
+                        <div class="stat-value" id="dashIncome">Rp 0</div>
+                        <div class="stat-trend" style="color: var(--success);">
+                            <i class="ph ph-trend-up"></i> Bulan ini
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon bg-expense"><i class="ph ph-arrow-down-right"></i></div>
+                        <div class="stat-label">Total Pengeluaran</div>
+                        <div class="stat-value" id="dashExpense">Rp 0</div>
+                        <div class="stat-trend clickable-trend" style="color: var(--danger);" onclick="showExpenseAnalysis()">
+                            <i class="ph ph-warning-circle"></i> Analisis Cepat (Klik)
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon bg-balance"><i class="ph ph-wallet"></i></div>
+                        <div class="stat-label">Saldo Bersih</div>
+                        <div class="stat-value" id="dashBalance">Rp 0</div>
+                        <div class="stat-trend">Cashflow Net</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon bg-saving"><i class="ph ph-piggy-bank"></i></div>
+                        <div class="stat-label">Savings Rate</div>
+                        <div class="stat-value" id="dashSavings">0%</div>
+                        <div class="stat-trend">Kesehatan Keuangan</div>
+                    </div>
+                </div>
+
+                <div class="charts-row">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3>Arus Kas (6 Bulan Terakhir)</h3>
+                            <button class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px;" onclick="switchPage('analytics')">Detail</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="mainChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3>Distribusi</h3>
+                        </div>
+                        <div class="chart-wrapper" style="height: 250px; min-height: unset;">
+                            <canvas id="doughnutChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="transactions-card">
+                    <div class="chart-header" style="padding: 24px; margin-bottom: 0; border-bottom: 1px solid var(--border-color);">
+                        <h3>Transaksi Terbaru</h3>
+                        <button class="btn btn-outline" onclick="switchPage('history', null)">Lihat Semua</button>
+                    </div>
+                    <div id="recentTransactionsList"></div>
+                </div>
+            </div>
+
+            <div id="inputPage" class="page-section hidden">
+                <div class="form-container">
+                    <h3 id="formTitle" style="margin-bottom: 24px; font-weight: 800; font-size: 1.5rem;">Input Transaksi Baru</h3>
+                    
+                    <div class="type-selector">
+                        <button type="button" class="active" onclick="setType('income')" id="btnTypeIncome">
+                            <i class="ph ph-arrow-up"></i> Pemasukan
+                        </button>
+                        <button type="button" onclick="setType('expense')" id="btnTypeExpense">
+                            <i class="ph ph-arrow-down"></i> Pengeluaran
+                        </button>
+                    </div>
+
+                    <form id="transactionForm">
+                        <div class="input-group">
+                            <label>Jumlah (Rp)</label>
+                            <input type="text" id="amountInput" placeholder="0" required inputmode="numeric" style="font-size: 1.5rem; font-weight: 700; color: var(--primary);">
+                        </div>
+                        <div class="input-group">
+                            <label>Kategori</label>
+                            <select id="categoryInput" required>
+                                <option value="">Pilih Kategori</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Tanggal</label>
+                            <input type="date" id="dateInput" required>
+                        </div>
+                        <div class="input-group">
+                            <label>Catatan (Opsional)</label>
+                            <textarea id="notesInput" rows="3" placeholder="Deskripsi transaksi..."></textarea>
+                        </div>
+                        
+                        <div id="cancelEditContainer" class="hidden" style="margin-bottom: 16px;">
+                            <button type="button" class="btn btn-outline" onclick="cancelEdit()" style="width: 100%;">Batalkan Edit</button>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 16px; font-size: 1.1rem;" id="submitTxBtn">
+                            <i class="ph ph-check-circle" style="font-size: 1.3rem;"></i> <span id="btnSubmitText">SIMPAN TRANSAKSI</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div id="historyPage" class="page-section hidden">
+                <div class="transactions-card">
+                    <div class="filters-bar">
+                        <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; width: 100%; -webkit-overflow-scrolling: touch;">
+                            <button class="filter-btn active" data-filter="all">Semua</button>
+                            <button class="filter-btn" data-filter="income">Pemasukan</button>
+                            <button class="filter-btn" data-filter="expense">Pengeluaran</button>
+                        </div>
+                        <div style="flex: 1; display: flex; gap: 8px; width: 100%;">
+                            <input type="text" class="search-input" id="searchBox" placeholder="Cari transaksi (nama/kategori)...">
+                            <button class="btn btn-primary" onclick="exportCSV()"><i class="ph ph-download-simple"></i> <span style="display: none; @media(min-width: 768px){display:inline;}">Export</span></button>
+                        </div>
+                    </div>
+                    <div id="fullTransactionList"></div>
+                </div>
+            </div>
+
+            <div id="analyticsPage" class="page-section hidden">
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Rata-rata Harian</div>
+                        <div class="stat-value" id="anaDailyAvg">Rp 0</div>
+                        <div class="stat-trend">Pengeluaran per hari</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Proyeksi Akhir Bulan</div>
+                        <div class="stat-value" id="anaProjection">Rp 0</div>
+                        <div class="stat-trend">Estimasi Total Pengeluaran</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Transaksi Terbesar</div>
+                        <div class="stat-value" id="anaMaxTx">Rp 0</div>
+                        <div class="stat-trend" id="anaMaxTxName">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Health Score</div>
+                        <div class="stat-value" id="anaHealthScore" style="color: var(--primary);">0/100</div>
+                        <div class="stat-trend">Indeks Kesehatan</div>
+                    </div>
+                </div>
+
+                <div class="charts-row">
+                    <div class="chart-card">
+                        <div class="chart-header"><h3>Analisis Keseimbangan (Radar)</h3></div>
+                        <div class="chart-wrapper" style="display: flex; justify-content: center;">
+                            <canvas id="radarChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header"><h3>Top 5 Pengeluaran</h3></div>
+                        <div id="topCategoriesList" style="flex: 1; overflow-y: auto;">
+                            </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
