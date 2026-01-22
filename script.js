@@ -1,5 +1,5 @@
 // ================= CONFIG & STATE =================
-// GANTI URL INI DENGAN URL WEB APP TERBARU ANDA (SETELAH DEPLOY NEW VERSION)
+// PASTIKAN URL INI SUDAH YANG TERBARU DARI DEPLOYMENT GOOGLE APPS SCRIPT
 const API_URL = 'https://script.google.com/macros/s/AKfycbx4kBUmk0MkbPq1C_4Vi1I6BSmVLLAD3IenNBNmRfGMs5Ae3l4QerEZypRnXwuJEnNolQ/exec';
 
 let state = {
@@ -26,12 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('authContainer').classList.remove('hidden');
     }
     
-    // Date formatting header
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     const dateEl = document.getElementById('currentDate');
     if(dateEl) dateEl.textContent = new Date().toLocaleDateString('id-ID', options);
 
-    // Amount formatter input
     const amountInput = document.getElementById('amountInput');
     if(amountInput) {
         amountInput.addEventListener('input', (e) => {
@@ -82,7 +80,6 @@ async function handleAuth(action, data) {
     btn.disabled = true;
 
     try {
-        // Menggunakan text() lalu parse manual agar tidak error jika server kirim HTML
         const res = await fetch(API_URL, { 
             method: 'POST', 
             body: JSON.stringify({ action, ...data }) 
@@ -94,7 +91,7 @@ async function handleAuth(action, data) {
             result = JSON.parse(responseText);
         } catch (e) {
             console.error("Server Response Error:", responseText);
-            throw new Error("Respon server tidak valid. Cek koneksi atau URL.");
+            throw new Error("Respon server tidak valid.");
         }
         
         if (result.status === 'success') {
@@ -163,7 +160,6 @@ async function loadTransactions() {
             result = JSON.parse(responseText);
         } catch (e) {
             console.warn("Gagal parse history:", responseText);
-            // Jangan throw error, biarkan kosong dulu
             return; 
         }
 
@@ -185,13 +181,21 @@ function updateUI() {
     performAnalysis();
 }
 
-// ================= FORM SUBMISSION (BAGIAN PENTING YANG DIPERBAIKI) =================
-// ====================================================================================
-
+// ================= FORM SUBMISSION (LOADING & ROBUST FETCH) =================
 document.getElementById('transactionForm').addEventListener('submit', async e => {
     e.preventDefault();
     const rawAmount = document.getElementById('amountInput').value.replace(/\./g, '');
     if(!rawAmount || rawAmount == 0) return showToast('Jumlah tidak boleh nol', 'error');
+
+    // Show Loading
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    loadingOverlay.classList.remove('hidden');
+
+    // Prepare Data with Time
+    const dateInputVal = document.getElementById('dateInput').value;
+    const now = new Date();
+    const timeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const fullDateTime = `${dateInputVal} ${timeString}`;
 
     const id = state.editingId || Date.now();
     const payload = {
@@ -201,71 +205,170 @@ document.getElementById('transactionForm').addEventListener('submit', async e =>
         type: state.currentType,
         amount: parseInt(rawAmount),
         category: document.getElementById('categoryInput').value,
-        date: document.getElementById('dateInput').value,
+        date: fullDateTime,
         description: document.getElementById('notesInput').value || document.getElementById('categoryInput').value,
         notes: document.getElementById('notesInput').value
     };
 
-    const btn = document.getElementById('submitTxBtn');
-    const originalText = document.getElementById('btnSubmitText').textContent;
-    btn.innerHTML = 'Menyimpan...'; btn.disabled = true;
-
-    // 1. OPTIMISTIC UPDATE (Tampilkan data langsung di layar tanpa menunggu server)
-    const oldTxList = [...state.transactions]; // Backup data lama
-    state.transactions = state.transactions.filter(t => t.id !== id); // Hapus versi lama jika edit
-    state.transactions.unshift(payload); // Masukkan data baru ke paling atas
-    
-    updateUI(); // Update tampilan segera
-    
-    // Pindah halaman & reset form langsung agar User merasa cepat
+    // Optimistic Update
+    state.transactions = state.transactions.filter(t => t.id !== id);
+    state.transactions.unshift(payload);
+    updateUI();
     cancelEdit();
     switchPage('dashboard', document.querySelector('.nav-item')); 
 
-    // 2. BACKGROUND SYNC (Kirim ke server di latar belakang)
     try {
         const res = await fetch(API_URL, { 
             method: 'POST', 
             body: JSON.stringify(payload)
         });
         
-        // Baca respon sebagai teks dulu (agar tidak error jika bukan JSON)
         const responseText = await res.text();
         let result;
 
         try {
             result = JSON.parse(responseText);
         } catch (e) {
-            // Jika gagal diparse (misal server timeout tapi data masuk), 
-            // Kita ANGGAP SUKSES karena data sudah di UI. 
-            // Hanya log warning di console, jangan ganggu user.
-            console.warn("Respon server bukan JSON, tapi data kemungkinan tersimpan:", responseText);
+            console.warn("Non-JSON response, assuming success:", responseText);
         }
 
         if (result && result.status === 'error') {
-            // Jika server eksplisit bilang ERROR, baru kita revert
             throw new Error(result.message);
         } else {
-            // Sukses beneran
             showToast(state.editingId ? 'Data diperbarui' : 'Tersimpan', 'success');
         }
 
     } catch (err) {
         console.error("Sync Error:", err);
-        // KITA TIDAK ME-REVERT DATA UI KECUALI ERRORNYA FATAL
-        // Ini mencegah notifikasi "Gagal" padahal data masuk.
         showToast('Data tersimpan di perangkat (Sync pending)', 'success');
     } finally {
-        // Kembalikan tombol
-        const btnReset = document.getElementById('submitTxBtn');
-        if(btnReset) {
-            btnReset.innerHTML = `<i class="ph ph-check-circle" style="font-size: 1.3rem;"></i> <span id="btnSubmitText">SIMPAN TRANSAKSI</span>`;
-            btnReset.disabled = false;
-        }
+        // Hide Loading
+        setTimeout(() => {
+            loadingOverlay.classList.add('hidden');
+        }, 500);
     }
 });
 
-// ================= END FORM SUBMISSION =================
+// ================= LIST & ACTIONS (WITH TIME) =================
+function renderTransactions(data, containerId) {
+    const container = document.getElementById(containerId);
+    if(!container) return;
 
+    if (data.length === 0) {
+        container.innerHTML = `
+            <div style="padding: 40px; text-align: center; color: var(--text-sub);">
+                <i class="ph ph-receipt" style="font-size: 40px; margin-bottom: 10px; opacity:0.5;"></i>
+                <p>Belum ada data transaksi.</p>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = data.map(t => {
+        const dateObj = new Date(t.date);
+        const dateStr = dateObj.toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: '2-digit'});
+        const timeStr = dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
+        const iconClass = getIconCategory(t.category);
+        
+        return `
+        <div class="transaction-row">
+            <div class="t-icon" style="background: ${t.type === 'income' ? 'rgba(16,185,129,0.1); color:#10b981' : 'rgba(239,68,68,0.1); color:#ef4444'}">
+                <i class="ph ${iconClass}"></i>
+            </div>
+            <div class="t-main">
+                <h4>${t.description}</h4>
+                <div class="t-sub">
+                    <span>${t.category}</span>
+                    <span style="display: inline-block; width: 4px; height: 4px; background: var(--text-sub); border-radius: 50%; margin: 0 5px; opacity: 0.5;"></span>
+                    <span class="mobile-date" style="font-size: 0.8rem;">${dateStr}</span>
+                </div>
+            </div>
+            <div class="t-date">
+                ${dateStr} <span class="t-time">${timeStr}</span>
+            </div>
+            <div class="t-amount" style="color: ${t.type === 'income' ? 'var(--success)' : 'var(--danger)'}">
+                ${t.type === 'income' ? '+' : '-'} ${formatRupiah(t.amount, false)}
+            </div>
+            <div class="t-actions">
+                <div class="action-btn-group">
+                    <button class="btn-icon" onclick="editTransaction(${t.id})" title="Edit">
+                        <i class="ph ph-pencil-simple"></i>
+                    </button>
+                    <button class="btn-icon delete" onclick="deleteTransaction(${t.id})" title="Hapus">
+                        <i class="ph ph-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `}).join('');
+}
+
+function editTransaction(id) {
+    const tx = state.transactions.find(t => t.id === id);
+    if(!tx) return;
+    
+    state.editingId = id;
+    state.currentType = tx.type;
+    setType(tx.type); 
+    
+    document.getElementById('amountInput').value = tx.amount.toLocaleString('id-ID');
+    document.getElementById('categoryInput').value = tx.category;
+    // Handle date format safely
+    try {
+        const d = new Date(tx.date);
+        const isoDate = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        document.getElementById('dateInput').value = isoDate;
+    } catch(e) {
+        document.getElementById('dateInput').valueAsDate = new Date();
+    }
+    
+    document.getElementById('notesInput').value = tx.notes || '';
+
+    const title = document.getElementById('formTitle');
+    const btnText = document.getElementById('btnSubmitText');
+    const cancelBox = document.getElementById('cancelEditContainer');
+
+    if(title) title.textContent = 'Edit Transaksi';
+    if(btnText) btnText.textContent = 'PERBARUI DATA';
+    if(cancelBox) cancelBox.classList.remove('hidden');
+
+    switchPage('input');
+    window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function cancelEdit() {
+    state.editingId = null;
+    const form = document.getElementById('transactionForm');
+    if(form) form.reset();
+    
+    document.getElementById('dateInput').valueAsDate = new Date();
+    
+    const title = document.getElementById('formTitle');
+    const btnText = document.getElementById('btnSubmitText');
+    const cancelBox = document.getElementById('cancelEditContainer');
+    
+    if(title) title.textContent = 'Input Transaksi Baru';
+    if(btnText) btnText.textContent = 'SIMPAN TRANSAKSI';
+    if(cancelBox) cancelBox.classList.add('hidden');
+}
+
+async function deleteTransaction(id) {
+    if(!confirm('Apakah Anda yakin ingin menghapus data ini secara permanen?')) return;
+    
+    // Optimistic Delete
+    const originalData = [...state.transactions];
+    state.transactions = state.transactions.filter(t => t.id !== id);
+    updateUI(); 
+
+    try {
+        await fetch(API_URL, { 
+            method: 'POST', 
+            body: JSON.stringify({ action: 'deleteTransaction', id, email: state.user.email }) 
+        });
+        showToast('Data berhasil dihapus', 'success');
+    } catch (err) {
+        console.warn('Delete response error', err);
+    }
+}
 
 // ================= DASHBOARD & CHARTS =================
 function updateDashboard() {
@@ -293,7 +396,7 @@ function animateValue(id, end) {
 
 function renderCharts() {
     const ctxMain = document.getElementById('mainChart');
-    if(!ctxMain) return; // Guard clause
+    if(!ctxMain) return; 
 
     const isDark = state.theme === 'dark';
     const gridColor = isDark ? '#334155' : '#e2e8f0';
@@ -346,7 +449,6 @@ function renderCharts() {
         }
     });
 
-    // Doughnut
     const ctxDoughnut = document.getElementById('doughnutChart');
     if(ctxDoughnut) {
         const cats = {};
@@ -371,121 +473,128 @@ function renderCharts() {
     }
 }
 
-// ================= LIST & ACTIONS =================
-function renderTransactions(data, containerId) {
-    const container = document.getElementById(containerId);
-    if(!container) return;
+// ================= ANALYTICS =================
+function performAnalysis() {
+    const tx = state.transactions;
+    if (tx.length === 0) return;
 
-    if (data.length === 0) {
-        container.innerHTML = `
-            <div style="padding: 40px; text-align: center; color: var(--text-sub);">
-                <i class="ph ph-receipt" style="font-size: 40px; margin-bottom: 10px; opacity:0.5;"></i>
-                <p>Belum ada data transaksi.</p>
+    const totalInc = tx.filter(t => t.type === 'income').reduce((a,b)=>a+b.amount,0);
+    const totalExp = tx.filter(t => t.type === 'expense').reduce((a,b)=>a+b.amount,0);
+
+    const today = new Date();
+    const currentMonthStr = today.toISOString().slice(0, 7);
+    const daysPassed = today.getDate();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
+    
+    const monthExpTx = tx.filter(t => t.date.startsWith(currentMonthStr) && t.type === 'expense');
+    const monthExpTotal = monthExpTx.reduce((a,b)=>a+b.amount, 0);
+    
+    const dailyAvg = daysPassed > 0 ? monthExpTotal / daysPassed : 0;
+    const projection = dailyAvg * daysInMonth;
+
+    const elAvg = document.getElementById('anaDailyAvg');
+    const elProj = document.getElementById('anaProjection');
+    if(elAvg) elAvg.textContent = formatRupiah(dailyAvg);
+    if(elProj) elProj.textContent = formatRupiah(projection);
+
+    const maxTx = [...tx].sort((a,b)=>b.amount - a.amount)[0];
+    if(maxTx) {
+        const elMax = document.getElementById('anaMaxTx');
+        const elMaxName = document.getElementById('anaMaxTxName');
+        if(elMax) elMax.textContent = formatRupiah(maxTx.amount);
+        if(elMaxName) elMaxName.textContent = maxTx.description;
+    }
+
+    let score = 50;
+    const ratio = totalInc > 0 ? (totalExp / totalInc) : 1;
+    if (ratio < 0.5) score += 30; 
+    else if (ratio < 0.8) score += 10; 
+    else if (ratio > 1.0) score -= 30; 
+    if(totalInc > totalExp) score += 10;
+    score = Math.max(0, Math.min(100, score));
+    
+    const scoreEl = document.getElementById('anaHealthScore');
+    if(scoreEl) {
+        scoreEl.textContent = score + '/100';
+        scoreEl.style.color = score > 70 ? 'var(--success)' : (score > 40 ? 'var(--warning)' : 'var(--danger)');
+    }
+
+    const catMap = {};
+    tx.filter(t => t.type === 'expense').forEach(t => catMap[t.category] = (catMap[t.category] || 0) + t.amount);
+    const sortedCats = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).slice(0, 5);
+    
+    const topCatList = document.getElementById('topCategoriesList');
+    if(topCatList) {
+        topCatList.innerHTML = sortedCats.map(([cat, val], i) => {
+            const maxVal = sortedCats[0][1] || 1;
+            const pct = (val / maxVal) * 100;
+            return `
+            <div style="margin-bottom: 16px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom: 6px; font-size: 0.9rem;">
+                    <span style="font-weight:600;">${i+1}. ${cat}</span>
+                    <span style="font-weight:700;">${formatRupiah(val)}</span>
+                </div>
+                <div style="width:100%; height:8px; background:var(--bg-body); border-radius:4px; overflow:hidden;">
+                    <div style="width:${pct}%; height:100%; background:var(--primary); border-radius:4px;"></div>
+                </div>
             </div>`;
-        return;
+        }).join('');
     }
 
-    container.innerHTML = data.map(t => {
-        const dateObj = new Date(t.date);
-        const dateStr = dateObj.toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: '2-digit'});
-        const iconClass = getIconCategory(t.category);
+    const radarEl = document.getElementById('radarChart');
+    if(radarEl) {
+        if(state.charts.radar) state.charts.radar.destroy();
         
-        return `
-        <div class="transaction-row">
-            <div class="t-icon" style="background: ${t.type === 'income' ? 'rgba(16,185,129,0.1); color:#10b981' : 'rgba(239,68,68,0.1); color:#ef4444'}">
-                <i class="ph ${iconClass}"></i>
-            </div>
-            <div class="t-main">
-                <h4>${t.description}</h4>
-                <div class="t-sub">
-                    <span>${t.category}</span>
-                    <span style="display: inline-block; width: 4px; height: 4px; background: var(--text-sub); border-radius: 50%; margin: 0 5px; opacity: 0.5;"></span>
-                    <span class="mobile-date" style="font-size: 0.8rem;">${dateStr}</span>
-                </div>
-            </div>
-            <div class="t-date">${dateStr}</div>
-            <div class="t-amount" style="color: ${t.type === 'income' ? 'var(--success)' : 'var(--danger)'}">
-                ${t.type === 'income' ? '+' : '-'} ${formatRupiah(t.amount, false)}
-            </div>
-            <div class="t-actions">
-                <div class="action-btn-group">
-                    <button class="btn-icon" onclick="editTransaction(${t.id})" title="Edit">
-                        <i class="ph ph-pencil-simple"></i>
-                    </button>
-                    <button class="btn-icon delete" onclick="deleteTransaction(${t.id})" title="Hapus">
-                        <i class="ph ph-trash"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    `}).join('');
-}
+        const isDark = state.theme === 'dark';
+        const gridColor = isDark ? '#334155' : '#e2e8f0';
+        const textColor = isDark ? '#94a3b8' : '#64748b';
 
-function editTransaction(id) {
-    const tx = state.transactions.find(t => t.id === id);
-    if(!tx) return;
-    
-    state.editingId = id;
-    state.currentType = tx.type;
-    setType(tx.type); 
-    
-    document.getElementById('amountInput').value = tx.amount.toLocaleString('id-ID');
-    document.getElementById('categoryInput').value = tx.category;
-    document.getElementById('dateInput').value = new Date(tx.date).toISOString().split('T')[0];
-    document.getElementById('notesInput').value = tx.notes || '';
-
-    const title = document.getElementById('formTitle');
-    const btnText = document.getElementById('btnSubmitText');
-    const cancelBox = document.getElementById('cancelEditContainer');
-
-    if(title) title.textContent = 'Edit Transaksi';
-    if(btnText) btnText.textContent = 'PERBARUI DATA';
-    if(cancelBox) cancelBox.classList.remove('hidden');
-
-    switchPage('input');
-    window.scrollTo({top: 0, behavior: 'smooth'});
-}
-
-function cancelEdit() {
-    state.editingId = null;
-    const form = document.getElementById('transactionForm');
-    if(form) form.reset();
-    
-    document.getElementById('dateInput').valueAsDate = new Date();
-    
-    const title = document.getElementById('formTitle');
-    const btnText = document.getElementById('btnSubmitText');
-    const cancelBox = document.getElementById('cancelEditContainer');
-    
-    if(title) title.textContent = 'Input Transaksi Baru';
-    if(btnText) btnText.textContent = 'SIMPAN TRANSAKSI';
-    if(cancelBox) cancelBox.classList.add('hidden');
-}
-
-async function deleteTransaction(id) {
-    if(!confirm('Apakah Anda yakin ingin menghapus data ini secara permanen?')) return;
-    
-    // Optimistic Delete
-    const originalData = [...state.transactions];
-    state.transactions = state.transactions.filter(t => t.id !== id);
-    updateUI(); 
-
-    try {
-        await fetch(API_URL, { 
-            method: 'POST', 
-            body: JSON.stringify({ action: 'deleteTransaction', id, email: state.user.email }) 
+        state.charts.radar = new Chart(radarEl, {
+            type: 'radar',
+            data: {
+                labels: ['Hemat', 'Investasi', 'Pemasukan', 'Kesehatan', 'Konsistensi'],
+                datasets: [{
+                    label: 'Metrik',
+                    data: [
+                        (1-ratio) * 100, 
+                        Math.min(100, (catMap['Investasi'] || 0) / (totalInc || 1) * 500), 
+                        Math.min(100, totalInc / 10000000 * 100), 
+                        score, 
+                        80 
+                    ],
+                    backgroundColor: 'rgba(67, 97, 238, 0.2)',
+                    borderColor: '#4361ee',
+                    pointBackgroundColor: '#4361ee'
+                }]
+            },
+            options: {
+                scales: {
+                    r: {
+                        angleLines: { color: gridColor },
+                        grid: { color: gridColor },
+                        pointLabels: { color: textColor, font: { size: 12 } },
+                        suggestedMin: 0, suggestedMax: 100
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
         });
-        showToast('Data berhasil dihapus', 'success');
-    } catch (err) {
-        // Jangan revert jika cuma error parsing. Hanya revert jika benar-benar gagal (opsional)
-        console.warn('Delete response error', err);
-        // state.transactions = originalData; 
-        // updateUI();
-        // showToast('Gagal menghapus data', 'error');
     }
 }
 
-// ================= HELPERS =================
+function showExpenseAnalysis() {
+    const now = new Date();
+    const currentMonth = now.toISOString().slice(0, 7);
+    const daysPassed = now.getDate();
+    
+    const monthTx = state.transactions.filter(t => t.date.startsWith(currentMonth));
+    const expense = monthTx.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const avg = expense / daysPassed;
+    
+    alert(`ANALISIS CEPAT:\n\nPengeluaran Bulan Ini: ${formatRupiah(expense)}\nRata-rata per hari: ${formatRupiah(avg)}`);
+}
+
+// ================= HELPERS & FILTER =================
 function setType(type) {
     state.currentType = type;
     const btnInc = document.getElementById('btnTypeIncome');
@@ -561,128 +670,6 @@ function showToast(msg, type) {
     setTimeout(() => toast.remove(), 3000);
 }
 
-function performAnalysis() {
-    const tx = state.transactions;
-    if (tx.length === 0) return;
-
-    const totalInc = tx.filter(t => t.type === 'income').reduce((a,b)=>a+b.amount,0);
-    const totalExp = tx.filter(t => t.type === 'expense').reduce((a,b)=>a+b.amount,0);
-
-    const today = new Date();
-    const currentMonthStr = today.toISOString().slice(0, 7);
-    const daysPassed = today.getDate();
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
-    
-    const monthExpTx = tx.filter(t => t.date.startsWith(currentMonthStr) && t.type === 'expense');
-    const monthExpTotal = monthExpTx.reduce((a,b)=>a+b.amount, 0);
-    
-    const dailyAvg = daysPassed > 0 ? monthExpTotal / daysPassed : 0;
-    const projection = dailyAvg * daysInMonth;
-
-    const elAvg = document.getElementById('anaDailyAvg');
-    const elProj = document.getElementById('anaProjection');
-    if(elAvg) elAvg.textContent = formatRupiah(dailyAvg);
-    if(elProj) elProj.textContent = formatRupiah(projection);
-
-    const maxTx = [...tx].sort((a,b)=>b.amount - a.amount)[0];
-    if(maxTx) {
-        const elMax = document.getElementById('anaMaxTx');
-        const elMaxName = document.getElementById('anaMaxTxName');
-        if(elMax) elMax.textContent = formatRupiah(maxTx.amount);
-        if(elMaxName) elMaxName.textContent = maxTx.description;
-    }
-
-    let score = 50;
-    const ratio = totalInc > 0 ? (totalExp / totalInc) : 1;
-    if (ratio < 0.5) score += 30; 
-    else if (ratio < 0.8) score += 10; 
-    else if (ratio > 1.0) score -= 30; 
-    if(totalInc > totalExp) score += 10;
-    score = Math.max(0, Math.min(100, score));
-    
-    const scoreEl = document.getElementById('anaHealthScore');
-    if(scoreEl) {
-        scoreEl.textContent = score + '/100';
-        scoreEl.style.color = score > 70 ? 'var(--success)' : (score > 40 ? 'var(--warning)' : 'var(--danger)');
-    }
-
-    // Top Categories
-    const catMap = {};
-    tx.filter(t => t.type === 'expense').forEach(t => catMap[t.category] = (catMap[t.category] || 0) + t.amount);
-    const sortedCats = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).slice(0, 5);
-    
-    const topCatList = document.getElementById('topCategoriesList');
-    if(topCatList) {
-        topCatList.innerHTML = sortedCats.map(([cat, val], i) => {
-            const maxVal = sortedCats[0][1] || 1;
-            const pct = (val / maxVal) * 100;
-            return `
-            <div style="margin-bottom: 16px;">
-                <div style="display:flex; justify-content:space-between; margin-bottom: 6px; font-size: 0.9rem;">
-                    <span style="font-weight:600;">${i+1}. ${cat}</span>
-                    <span style="font-weight:700;">${formatRupiah(val)}</span>
-                </div>
-                <div style="width:100%; height:8px; background:var(--bg-body); border-radius:4px; overflow:hidden;">
-                    <div style="width:${pct}%; height:100%; background:var(--primary); border-radius:4px;"></div>
-                </div>
-            </div>`;
-        }).join('');
-    }
-
-    // Radar Chart
-    const radarEl = document.getElementById('radarChart');
-    if(radarEl) {
-        if(state.charts.radar) state.charts.radar.destroy();
-        
-        const isDark = state.theme === 'dark';
-        const gridColor = isDark ? '#334155' : '#e2e8f0';
-        const textColor = isDark ? '#94a3b8' : '#64748b';
-
-        state.charts.radar = new Chart(radarEl, {
-            type: 'radar',
-            data: {
-                labels: ['Hemat', 'Investasi', 'Pemasukan', 'Kesehatan', 'Konsistensi'],
-                datasets: [{
-                    label: 'Metrik',
-                    data: [
-                        (1-ratio) * 100, 
-                        Math.min(100, (catMap['Investasi'] || 0) / (totalInc || 1) * 500), 
-                        Math.min(100, totalInc / 10000000 * 100), 
-                        score, 
-                        80 
-                    ],
-                    backgroundColor: 'rgba(67, 97, 238, 0.2)',
-                    borderColor: '#4361ee',
-                    pointBackgroundColor: '#4361ee'
-                }]
-            },
-            options: {
-                scales: {
-                    r: {
-                        angleLines: { color: gridColor },
-                        grid: { color: gridColor },
-                        pointLabels: { color: textColor, font: { size: 12 } },
-                        suggestedMin: 0, suggestedMax: 100
-                    }
-                },
-                plugins: { legend: { display: false } }
-            }
-        });
-    }
-}
-
-function showExpenseAnalysis() {
-    const now = new Date();
-    const currentMonth = now.toISOString().slice(0, 7);
-    const daysPassed = now.getDate();
-    
-    const monthTx = state.transactions.filter(t => t.date.startsWith(currentMonth));
-    const expense = monthTx.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const avg = expense / daysPassed;
-    
-    alert(`ANALISIS CEPAT:\n\nPengeluaran Bulan Ini: ${formatRupiah(expense)}\nRata-rata per hari: ${formatRupiah(avg)}`);
-}
-
 // Filtering
 document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', function() {
@@ -717,132 +704,4 @@ function exportCSV() {
     link.setAttribute("download", `cashflow_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
-}
-// ================= LIST & ACTIONS (UPDATE JAM) =================
-function renderTransactions(data, containerId) {
-    const container = document.getElementById(containerId);
-    if(!container) return;
-
-    if (data.length === 0) {
-        container.innerHTML = `
-            <div style="padding: 40px; text-align: center; color: var(--text-sub);">
-                <i class="ph ph-receipt" style="font-size: 40px; margin-bottom: 10px; opacity:0.5;"></i>
-                <p>Belum ada data transaksi.</p>
-            </div>`;
-        return;
-    }
-
-    container.innerHTML = data.map(t => {
-        const dateObj = new Date(t.date);
-        const dateStr = dateObj.toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: '2-digit'});
-        
-        // LOGIKA JAM: Ambil jam dari data, atau default 00:00 jika data lama
-        // Kita format menjadi HH:mm
-        const timeStr = dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
-        
-        const iconClass = getIconCategory(t.category);
-        
-        return `
-        <div class="transaction-row">
-            <div class="t-icon" style="background: ${t.type === 'income' ? 'rgba(16,185,129,0.1); color:#10b981' : 'rgba(239,68,68,0.1); color:#ef4444'}">
-                <i class="ph ${iconClass}"></i>
-            </div>
-            <div class="t-main">
-                <h4>${t.description}</h4>
-                <div class="t-sub">
-                    <span>${t.category}</span>
-                    <span style="display: inline-block; width: 4px; height: 4px; background: var(--text-sub); border-radius: 50%; margin: 0 5px; opacity: 0.5;"></span>
-                    <span class="mobile-date" style="font-size: 0.8rem;">${dateStr}</span>
-                </div>
-            </div>
-            <div class="t-date">
-                ${dateStr} 
-                <span class="t-time">${timeStr}</span> </div>
-            <div class="t-amount" style="color: ${t.type === 'income' ? 'var(--success)' : 'var(--danger)'}">
-                ${t.type === 'income' ? '+' : '-'} ${formatRupiah(t.amount, false)}
-            </div>
-            <div class="t-actions">
-                <div class="action-btn-group">
-                    <button class="btn-icon" onclick="editTransaction(${t.id})" title="Edit">
-                        <i class="ph ph-pencil-simple"></i>
-                    </button>
-                    <button class="btn-icon delete" onclick="deleteTransaction(${t.id})" title="Hapus">
-                        <i class="ph ph-trash"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    `}).join('');
-}
-
-// ... kode lainnya ...
-
-// ================= FORM SUBMISSION (UPDATE LOADING & JAM) =================
-document.getElementById('transactionForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const rawAmount = document.getElementById('amountInput').value.replace(/\./g, '');
-    if(!rawAmount || rawAmount == 0) return showToast('Jumlah tidak boleh nol', 'error');
-
-    // TAMPILKAN LOADING
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    loadingOverlay.classList.remove('hidden');
-
-    // LOGIKA JAM: Gabungkan Tanggal Input + Jam Sekarang agar tersimpan akurat
-    const dateInputVal = document.getElementById('dateInput').value;
-    const now = new Date();
-    const timeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const fullDateTime = `${dateInputVal} ${timeString}`; // Format: YYYY-MM-DD HH:mm
-
-    const id = state.editingId || Date.now();
-    const payload = {
-        action: 'addTransaction',
-        email: state.user.email,
-        id: id,
-        type: state.currentType,
-        amount: parseInt(rawAmount),
-        category: document.getElementById('categoryInput').value,
-        date: fullDateTime, // Kirim tanggal LENGKAP dengan jam
-        description: document.getElementById('notesInput').value || document.getElementById('categoryInput').value,
-        notes: document.getElementById('notesInput').value
-    };
-
-    // Optimistic Update
-    const oldTxList = [...state.transactions];
-    state.transactions = state.transactions.filter(t => t.id !== id);
-    state.transactions.unshift(payload);
-    
-    updateUI();
-    cancelEdit();
-    switchPage('dashboard', document.querySelector('.nav-item')); 
-
-    try {
-        const res = await fetch(API_URL, { 
-            method: 'POST', 
-            body: JSON.stringify(payload)
-        });
-        
-        const responseText = await res.text();
-        let result;
-
-        try {
-            result = JSON.parse(responseText);
-        } catch (e) {
-            console.warn("Respon server bukan JSON:", responseText);
-        }
-
-        if (result && result.status === 'error') {
-            throw new Error(result.message);
-        } else {
-            showToast(state.editingId ? 'Data diperbarui' : 'Tersimpan', 'success');
-        }
-
-    } catch (err) {
-        console.error("Sync Error:", err);
-        showToast('Data tersimpan (Sync pending)', 'success');
-    } finally {
-        // SEMBUNYIKAN LOADING (Delay sedikit agar transisi halus)
-        setTimeout(() => {
-            loadingOverlay.classList.add('hidden');
-        }, 500);
-    }
 }
