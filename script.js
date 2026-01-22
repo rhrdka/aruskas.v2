@@ -718,3 +718,131 @@ function exportCSV() {
     document.body.appendChild(link);
     link.click();
 }
+// ================= LIST & ACTIONS (UPDATE JAM) =================
+function renderTransactions(data, containerId) {
+    const container = document.getElementById(containerId);
+    if(!container) return;
+
+    if (data.length === 0) {
+        container.innerHTML = `
+            <div style="padding: 40px; text-align: center; color: var(--text-sub);">
+                <i class="ph ph-receipt" style="font-size: 40px; margin-bottom: 10px; opacity:0.5;"></i>
+                <p>Belum ada data transaksi.</p>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = data.map(t => {
+        const dateObj = new Date(t.date);
+        const dateStr = dateObj.toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: '2-digit'});
+        
+        // LOGIKA JAM: Ambil jam dari data, atau default 00:00 jika data lama
+        // Kita format menjadi HH:mm
+        const timeStr = dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
+        
+        const iconClass = getIconCategory(t.category);
+        
+        return `
+        <div class="transaction-row">
+            <div class="t-icon" style="background: ${t.type === 'income' ? 'rgba(16,185,129,0.1); color:#10b981' : 'rgba(239,68,68,0.1); color:#ef4444'}">
+                <i class="ph ${iconClass}"></i>
+            </div>
+            <div class="t-main">
+                <h4>${t.description}</h4>
+                <div class="t-sub">
+                    <span>${t.category}</span>
+                    <span style="display: inline-block; width: 4px; height: 4px; background: var(--text-sub); border-radius: 50%; margin: 0 5px; opacity: 0.5;"></span>
+                    <span class="mobile-date" style="font-size: 0.8rem;">${dateStr}</span>
+                </div>
+            </div>
+            <div class="t-date">
+                ${dateStr} 
+                <span class="t-time">${timeStr}</span> </div>
+            <div class="t-amount" style="color: ${t.type === 'income' ? 'var(--success)' : 'var(--danger)'}">
+                ${t.type === 'income' ? '+' : '-'} ${formatRupiah(t.amount, false)}
+            </div>
+            <div class="t-actions">
+                <div class="action-btn-group">
+                    <button class="btn-icon" onclick="editTransaction(${t.id})" title="Edit">
+                        <i class="ph ph-pencil-simple"></i>
+                    </button>
+                    <button class="btn-icon delete" onclick="deleteTransaction(${t.id})" title="Hapus">
+                        <i class="ph ph-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `}).join('');
+}
+
+// ... kode lainnya ...
+
+// ================= FORM SUBMISSION (UPDATE LOADING & JAM) =================
+document.getElementById('transactionForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const rawAmount = document.getElementById('amountInput').value.replace(/\./g, '');
+    if(!rawAmount || rawAmount == 0) return showToast('Jumlah tidak boleh nol', 'error');
+
+    // TAMPILKAN LOADING
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    loadingOverlay.classList.remove('hidden');
+
+    // LOGIKA JAM: Gabungkan Tanggal Input + Jam Sekarang agar tersimpan akurat
+    const dateInputVal = document.getElementById('dateInput').value;
+    const now = new Date();
+    const timeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const fullDateTime = `${dateInputVal} ${timeString}`; // Format: YYYY-MM-DD HH:mm
+
+    const id = state.editingId || Date.now();
+    const payload = {
+        action: 'addTransaction',
+        email: state.user.email,
+        id: id,
+        type: state.currentType,
+        amount: parseInt(rawAmount),
+        category: document.getElementById('categoryInput').value,
+        date: fullDateTime, // Kirim tanggal LENGKAP dengan jam
+        description: document.getElementById('notesInput').value || document.getElementById('categoryInput').value,
+        notes: document.getElementById('notesInput').value
+    };
+
+    // Optimistic Update
+    const oldTxList = [...state.transactions];
+    state.transactions = state.transactions.filter(t => t.id !== id);
+    state.transactions.unshift(payload);
+    
+    updateUI();
+    cancelEdit();
+    switchPage('dashboard', document.querySelector('.nav-item')); 
+
+    try {
+        const res = await fetch(API_URL, { 
+            method: 'POST', 
+            body: JSON.stringify(payload)
+        });
+        
+        const responseText = await res.text();
+        let result;
+
+        try {
+            result = JSON.parse(responseText);
+        } catch (e) {
+            console.warn("Respon server bukan JSON:", responseText);
+        }
+
+        if (result && result.status === 'error') {
+            throw new Error(result.message);
+        } else {
+            showToast(state.editingId ? 'Data diperbarui' : 'Tersimpan', 'success');
+        }
+
+    } catch (err) {
+        console.error("Sync Error:", err);
+        showToast('Data tersimpan (Sync pending)', 'success');
+    } finally {
+        // SEMBUNYIKAN LOADING (Delay sedikit agar transisi halus)
+        setTimeout(() => {
+            loadingOverlay.classList.add('hidden');
+        }, 500);
+    }
+}
