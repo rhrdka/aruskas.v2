@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cashflow Manager by dika</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Cashflow Manager Pro v3.1 (Complete)</title>
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -15,11 +15,18 @@
 
     <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
 
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner-box">
+            <div class="spinner"></div>
+            <p>Menyimpan Data...</p>
+        </div>
+    </div>
+
     <div id="authContainer" class="auth-overlay">
         <div class="auth-box">
             <div class="logo-area" style="justify-content: center; margin-bottom: 32px; padding: 0;">
                 <div class="logo-icon"><i class="ph ph-wallet"></i></div>
-                <div class="logo-text">CASHFLOW</div>
+                <div class="logo-text">Cashflow Pro</div>
             </div>
             
             <div id="loginFormSection">
@@ -279,13 +286,6 @@
             </div>
 
         </main>
-    </div>
-    
-    <div id="loadingOverlay" class="loading-overlay hidden">
-        <div class="spinner-box">
-            <div class="spinner"></div>
-            <p>Menyimpan Data...</p>
-        </div>
     </div>
 
     <script src="script.js"></script>
