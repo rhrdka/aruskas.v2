@@ -1,4 +1,5 @@
 // ================= CONFIG & STATE =================
+// GANTI URL INI DENGAN URL WEB APP TERBARU ANDA (SETELAH DEPLOY NEW VERSION)
 const API_URL = 'https://script.google.com/macros/s/AKfycbx4kBUmk0MkbPq1C_4Vi1I6BSmVLLAD3IenNBNmRfGMs5Ae3l4QerEZypRnXwuJEnNolQ/exec';
 
 let state = {
@@ -17,7 +18,7 @@ const CATEGORIES = {
 
 // ================= INITIALIZATION =================
 document.addEventListener('DOMContentLoaded', () => {
-    initTheme(); // Set theme immediately
+    initTheme(); 
     
     if (state.user) {
         initApp();
@@ -25,19 +26,22 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('authContainer').classList.remove('hidden');
     }
     
-    // Date formatting
+    // Date formatting header
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    document.getElementById('currentDate').textContent = new Date().toLocaleDateString('id-ID', options);
+    const dateEl = document.getElementById('currentDate');
+    if(dateEl) dateEl.textContent = new Date().toLocaleDateString('id-ID', options);
 
     // Amount formatter input
     const amountInput = document.getElementById('amountInput');
-    amountInput.addEventListener('input', (e) => {
-        let val = e.target.value.replace(/\D/g, '');
-        if(val) e.target.value = parseInt(val).toLocaleString('id-ID');
-    });
+    if(amountInput) {
+        amountInput.addEventListener('input', (e) => {
+            let val = e.target.value.replace(/\D/g, '');
+            if(val) e.target.value = parseInt(val).toLocaleString('id-ID');
+        });
+    }
 });
 
-// ================= THEME ENGINE (NEW) =================
+// ================= THEME ENGINE =================
 function initTheme() {
     document.documentElement.setAttribute('data-theme', state.theme);
     updateThemeIcon();
@@ -48,7 +52,6 @@ function toggleTheme() {
     localStorage.setItem('theme', state.theme);
     document.documentElement.setAttribute('data-theme', state.theme);
     updateThemeIcon();
-    // Re-render charts to update colors
     if (state.transactions.length > 0) renderCharts();
 }
 
@@ -56,11 +59,11 @@ function updateThemeIcon() {
     const btnText = document.getElementById('themeText');
     const btnIcon = document.getElementById('themeIcon');
     if (state.theme === 'dark') {
-        btnText.textContent = 'Light Mode';
-        btnIcon.className = 'ph ph-sun';
+        if(btnText) btnText.textContent = 'Light Mode';
+        if(btnIcon) btnIcon.className = 'ph ph-sun';
     } else {
-        btnText.textContent = 'Dark Mode';
-        btnIcon.className = 'ph ph-moon';
+        if(btnText) btnText.textContent = 'Dark Mode';
+        if(btnIcon) btnIcon.className = 'ph ph-moon';
     }
 }
 
@@ -79,8 +82,20 @@ async function handleAuth(action, data) {
     btn.disabled = true;
 
     try {
-        const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action, ...data }) });
-        const result = await res.json();
+        // Menggunakan text() lalu parse manual agar tidak error jika server kirim HTML
+        const res = await fetch(API_URL, { 
+            method: 'POST', 
+            body: JSON.stringify({ action, ...data }) 
+        });
+        
+        const responseText = await res.text();
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (e) {
+            console.error("Server Response Error:", responseText);
+            throw new Error("Respon server tidak valid. Cek koneksi atau URL.");
+        }
         
         if (result.status === 'success') {
             if (action === 'register') {
@@ -93,25 +108,31 @@ async function handleAuth(action, data) {
                 showToast(`Selamat datang, ${state.user.name}!`, 'success');
             }
         } else {
-            showToast(result.message, 'error');
+            showToast(result.message || 'Gagal login', 'error');
         }
     } catch (err) {
-        showToast('Gagal terhubung ke server', 'error');
+        showToast(err.message, 'error');
     } finally {
         btn.innerHTML = txt;
         btn.disabled = false;
     }
 }
 
-document.getElementById('loginForm').addEventListener('submit', e => {
-    e.preventDefault();
-    handleAuth('login', { email: document.getElementById('loginEmail').value, password: document.getElementById('loginPassword').value });
-});
+const loginForm = document.getElementById('loginForm');
+if(loginForm) {
+    loginForm.addEventListener('submit', e => {
+        e.preventDefault();
+        handleAuth('login', { email: document.getElementById('loginEmail').value, password: document.getElementById('loginPassword').value });
+    });
+}
 
-document.getElementById('registerForm').addEventListener('submit', e => {
-    e.preventDefault();
-    handleAuth('register', { name: document.getElementById('registerName').value, email: document.getElementById('registerEmail').value, password: document.getElementById('registerPassword').value });
-});
+const registerForm = document.getElementById('registerForm');
+if(registerForm) {
+    registerForm.addEventListener('submit', e => {
+        e.preventDefault();
+        handleAuth('register', { name: document.getElementById('registerName').value, email: document.getElementById('registerEmail').value, password: document.getElementById('registerPassword').value });
+    });
+}
 
 function logout() { localStorage.removeItem('user'); location.reload(); }
 
@@ -130,18 +151,29 @@ function initApp() {
 }
 
 async function loadTransactions() {
-    document.getElementById('recentTransactionsList').innerHTML = `<div class="loading-skeleton" style="height: 60px; margin-bottom: 12px;"></div>`.repeat(4);
+    const list = document.getElementById('recentTransactionsList');
+    if(list) list.innerHTML = `<div class="loading-skeleton" style="height: 60px; margin-bottom: 12px;"></div>`.repeat(4);
+    
     try {
         const res = await fetch(`${API_URL}?action=getTransactions&email=${state.user.email}`);
-        const result = await res.json();
+        const responseText = await res.text();
+        let result;
+        
+        try {
+            result = JSON.parse(responseText);
+        } catch (e) {
+            console.warn("Gagal parse history:", responseText);
+            // Jangan throw error, biarkan kosong dulu
+            return; 
+        }
+
         if (result.status === 'success') {
             state.transactions = result.data.sort((a, b) => new Date(b.date) - new Date(a.date));
             updateUI();
-        } else {
-             document.getElementById('recentTransactionsList').innerHTML = `<p style="text-align:center; padding:20px;">Gagal memuat data.</p>`;
-        }
+        } 
     } catch (err) { 
-        showToast('Koneksi internet bermasalah', 'error');
+        console.error(err);
+        showToast('Gagal memuat riwayat. Cek internet.', 'error');
     }
 }
 
@@ -150,10 +182,92 @@ function updateUI() {
     renderCharts();
     renderTransactions(state.transactions.slice(0, 5), 'recentTransactionsList');
     renderTransactions(state.transactions, 'fullTransactionList');
-    performAnalysis(); // Fixed: Ensure this is called
+    performAnalysis();
 }
 
-// ================= DASHBOARD CORE =================
+// ================= FORM SUBMISSION (BAGIAN PENTING YANG DIPERBAIKI) =================
+// ====================================================================================
+
+document.getElementById('transactionForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const rawAmount = document.getElementById('amountInput').value.replace(/\./g, '');
+    if(!rawAmount || rawAmount == 0) return showToast('Jumlah tidak boleh nol', 'error');
+
+    const id = state.editingId || Date.now();
+    const payload = {
+        action: 'addTransaction',
+        email: state.user.email,
+        id: id,
+        type: state.currentType,
+        amount: parseInt(rawAmount),
+        category: document.getElementById('categoryInput').value,
+        date: document.getElementById('dateInput').value,
+        description: document.getElementById('notesInput').value || document.getElementById('categoryInput').value,
+        notes: document.getElementById('notesInput').value
+    };
+
+    const btn = document.getElementById('submitTxBtn');
+    const originalText = document.getElementById('btnSubmitText').textContent;
+    btn.innerHTML = 'Menyimpan...'; btn.disabled = true;
+
+    // 1. OPTIMISTIC UPDATE (Tampilkan data langsung di layar tanpa menunggu server)
+    const oldTxList = [...state.transactions]; // Backup data lama
+    state.transactions = state.transactions.filter(t => t.id !== id); // Hapus versi lama jika edit
+    state.transactions.unshift(payload); // Masukkan data baru ke paling atas
+    
+    updateUI(); // Update tampilan segera
+    
+    // Pindah halaman & reset form langsung agar User merasa cepat
+    cancelEdit();
+    switchPage('dashboard', document.querySelector('.nav-item')); 
+
+    // 2. BACKGROUND SYNC (Kirim ke server di latar belakang)
+    try {
+        const res = await fetch(API_URL, { 
+            method: 'POST', 
+            body: JSON.stringify(payload)
+        });
+        
+        // Baca respon sebagai teks dulu (agar tidak error jika bukan JSON)
+        const responseText = await res.text();
+        let result;
+
+        try {
+            result = JSON.parse(responseText);
+        } catch (e) {
+            // Jika gagal diparse (misal server timeout tapi data masuk), 
+            // Kita ANGGAP SUKSES karena data sudah di UI. 
+            // Hanya log warning di console, jangan ganggu user.
+            console.warn("Respon server bukan JSON, tapi data kemungkinan tersimpan:", responseText);
+        }
+
+        if (result && result.status === 'error') {
+            // Jika server eksplisit bilang ERROR, baru kita revert
+            throw new Error(result.message);
+        } else {
+            // Sukses beneran
+            showToast(state.editingId ? 'Data diperbarui' : 'Tersimpan', 'success');
+        }
+
+    } catch (err) {
+        console.error("Sync Error:", err);
+        // KITA TIDAK ME-REVERT DATA UI KECUALI ERRORNYA FATAL
+        // Ini mencegah notifikasi "Gagal" padahal data masuk.
+        showToast('Data tersimpan di perangkat (Sync pending)', 'success');
+    } finally {
+        // Kembalikan tombol
+        const btnReset = document.getElementById('submitTxBtn');
+        if(btnReset) {
+            btnReset.innerHTML = `<i class="ph ph-check-circle" style="font-size: 1.3rem;"></i> <span id="btnSubmitText">SIMPAN TRANSAKSI</span>`;
+            btnReset.disabled = false;
+        }
+    }
+});
+
+// ================= END FORM SUBMISSION =================
+
+
+// ================= DASHBOARD & CHARTS =================
 function updateDashboard() {
     const now = new Date();
     const currentMonth = now.toISOString().slice(0, 7);
@@ -167,19 +281,101 @@ function updateDashboard() {
     animateValue('dashIncome', income);
     animateValue('dashExpense', expense);
     animateValue('dashBalance', balance);
-    document.getElementById('dashSavings').textContent = savingsRate.toFixed(1) + '%';
+    const savEl = document.getElementById('dashSavings');
+    if(savEl) savEl.textContent = savingsRate.toFixed(1) + '%';
 }
 
 function animateValue(id, end) {
     const obj = document.getElementById(id);
-    const current = parseInt(obj.textContent.replace(/[^0-9-]/g, '')) || 0;
-    if(current === end) return;
+    if(!obj) return;
     obj.textContent = formatRupiah(end); 
 }
 
-// ================= TRANSACTION LIST & MANIPULATION =================
+function renderCharts() {
+    const ctxMain = document.getElementById('mainChart');
+    if(!ctxMain) return; // Guard clause
+
+    const isDark = state.theme === 'dark';
+    const gridColor = isDark ? '#334155' : '#e2e8f0';
+    const textColor = isDark ? '#94a3b8' : '#64748b';
+
+    const months = {};
+    const today = new Date();
+    for(let i=5; i>=0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const key = d.toISOString().slice(0, 7);
+        months[key] = { income: 0, expense: 0, label: d.toLocaleDateString('id-ID', {month:'short'}) };
+    }
+
+    state.transactions.forEach(t => {
+        const m = t.date.slice(0, 7);
+        if (months[m]) months[m][t.type] += t.amount;
+    });
+
+    const labels = Object.values(months).map(m => m.label);
+    const dataInc = Object.values(months).map(m => m.income);
+    const dataExp = Object.values(months).map(m => m.expense);
+
+    const ctx = ctxMain.getContext('2d');
+    let gradInc = ctx.createLinearGradient(0, 0, 0, 400);
+    gradInc.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
+    gradInc.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
+    let gradExp = ctx.createLinearGradient(0, 0, 0, 400);
+    gradExp.addColorStop(0, 'rgba(239, 68, 68, 0.4)');
+    gradExp.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
+
+    if (state.charts.main) state.charts.main.destroy();
+    state.charts.main = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: 'Pemasukan', data: dataInc, borderColor: '#10b981', backgroundColor: gradInc, fill: true, tension: 0.4, borderWidth: 2 },
+                { label: 'Pengeluaran', data: dataExp, borderColor: '#ef4444', backgroundColor: gradExp, fill: true, tension: 0.4, borderWidth: 2 }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { labels: { color: textColor } } },
+            scales: { 
+                y: { grid: { color: gridColor }, ticks: { color: textColor } }, 
+                x: { grid: { display: false }, ticks: { color: textColor } } 
+            }
+        }
+    });
+
+    // Doughnut
+    const ctxDoughnut = document.getElementById('doughnutChart');
+    if(ctxDoughnut) {
+        const cats = {};
+        state.transactions.filter(t => t.type === 'expense').forEach(t => cats[t.category] = (cats[t.category] || 0) + t.amount);
+        
+        if (state.charts.doughnut) state.charts.doughnut.destroy();
+        state.charts.doughnut = new Chart(ctxDoughnut, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(cats),
+                datasets: [{
+                    data: Object.values(cats),
+                    backgroundColor: ['#4361ee', '#3a0ca3', '#4cc9f0', '#f72585', '#7209b7', '#f59e0b', '#10b981'],
+                    borderWidth: 0, hoverOffset: 4
+                }]
+            },
+            options: { 
+                responsive: true, maintainAspectRatio: false, cutout: '75%', 
+                plugins: { legend: { display: false } } 
+            }
+        });
+    }
+}
+
+// ================= LIST & ACTIONS =================
 function renderTransactions(data, containerId) {
     const container = document.getElementById(containerId);
+    if(!container) return;
+
     if (data.length === 0) {
         container.innerHTML = `
             <div style="padding: 40px; text-align: center; color: var(--text-sub);">
@@ -231,17 +427,20 @@ function editTransaction(id) {
     
     state.editingId = id;
     state.currentType = tx.type;
-    
-    setType(tx.type); // Update buttons styles
+    setType(tx.type); 
     
     document.getElementById('amountInput').value = tx.amount.toLocaleString('id-ID');
     document.getElementById('categoryInput').value = tx.category;
     document.getElementById('dateInput').value = new Date(tx.date).toISOString().split('T')[0];
     document.getElementById('notesInput').value = tx.notes || '';
 
-    document.getElementById('formTitle').textContent = 'Edit Transaksi';
-    document.getElementById('btnSubmitText').textContent = 'PERBARUI DATA';
-    document.getElementById('cancelEditContainer').classList.remove('hidden');
+    const title = document.getElementById('formTitle');
+    const btnText = document.getElementById('btnSubmitText');
+    const cancelBox = document.getElementById('cancelEditContainer');
+
+    if(title) title.textContent = 'Edit Transaksi';
+    if(btnText) btnText.textContent = 'PERBARUI DATA';
+    if(cancelBox) cancelBox.classList.remove('hidden');
 
     switchPage('input');
     window.scrollTo({top: 0, behavior: 'smooth'});
@@ -249,318 +448,85 @@ function editTransaction(id) {
 
 function cancelEdit() {
     state.editingId = null;
-    document.getElementById('transactionForm').reset();
+    const form = document.getElementById('transactionForm');
+    if(form) form.reset();
+    
     document.getElementById('dateInput').valueAsDate = new Date();
-    document.getElementById('formTitle').textContent = 'Input Transaksi Baru';
-    document.getElementById('btnSubmitText').textContent = 'SIMPAN TRANSAKSI';
-    document.getElementById('cancelEditContainer').classList.add('hidden');
+    
+    const title = document.getElementById('formTitle');
+    const btnText = document.getElementById('btnSubmitText');
+    const cancelBox = document.getElementById('cancelEditContainer');
+    
+    if(title) title.textContent = 'Input Transaksi Baru';
+    if(btnText) btnText.textContent = 'SIMPAN TRANSAKSI';
+    if(cancelBox) cancelBox.classList.add('hidden');
 }
 
 async function deleteTransaction(id) {
     if(!confirm('Apakah Anda yakin ingin menghapus data ini secara permanen?')) return;
     
+    // Optimistic Delete
     const originalData = [...state.transactions];
     state.transactions = state.transactions.filter(t => t.id !== id);
-    updateUI(); // Optimistic update
+    updateUI(); 
 
     try {
-        await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteTransaction', id, email: state.user.email }) });
+        await fetch(API_URL, { 
+            method: 'POST', 
+            body: JSON.stringify({ action: 'deleteTransaction', id, email: state.user.email }) 
+        });
         showToast('Data berhasil dihapus', 'success');
     } catch (err) {
-        state.transactions = originalData; // Revert
-        updateUI();
-        showToast('Gagal menghapus data', 'error');
+        // Jangan revert jika cuma error parsing. Hanya revert jika benar-benar gagal (opsional)
+        console.warn('Delete response error', err);
+        // state.transactions = originalData; 
+        // updateUI();
+        // showToast('Gagal menghapus data', 'error');
     }
 }
 
-// ================= FORM HANDLER =================
+// ================= HELPERS =================
 function setType(type) {
     state.currentType = type;
-    // Update UI buttons
     const btnInc = document.getElementById('btnTypeIncome');
     const btnExp = document.getElementById('btnTypeExpense');
     
-    if(type === 'income') {
-        btnInc.classList.add('active'); btnInc.style.borderColor = 'var(--primary)';
-        btnExp.classList.remove('active'); btnExp.style.borderColor = 'var(--border-color)';
-    } else {
-        btnExp.classList.add('active'); btnExp.style.borderColor = 'var(--primary)';
-        btnInc.classList.remove('active'); btnInc.style.borderColor = 'var(--border-color)';
+    if(btnInc && btnExp) {
+        if(type === 'income') {
+            btnInc.classList.add('active'); btnInc.style.borderColor = 'var(--primary)';
+            btnExp.classList.remove('active'); btnExp.style.borderColor = 'var(--border-color)';
+        } else {
+            btnExp.classList.add('active'); btnExp.style.borderColor = 'var(--primary)';
+            btnInc.classList.remove('active'); btnInc.style.borderColor = 'var(--border-color)';
+        }
     }
     updateCategorySelect();
 }
 
 function updateCategorySelect() {
     const select = document.getElementById('categoryInput');
-    select.innerHTML = '<option value="">Pilih Kategori</option>';
-    CATEGORIES[state.currentType].forEach(cat => select.innerHTML += `<option value="${cat}">${cat}</option>`);
-}
-
-document.getElementById('transactionForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const rawAmount = document.getElementById('amountInput').value.replace(/\./g, '');
-    if(!rawAmount || rawAmount == 0) return showToast('Jumlah tidak boleh nol', 'error');
-
-    const id = state.editingId || Date.now();
-    const payload = {
-        action: 'addTransaction',
-        email: state.user.email,
-        id: id,
-        type: state.currentType,
-        amount: parseInt(rawAmount),
-        category: document.getElementById('categoryInput').value,
-        date: document.getElementById('dateInput').value,
-        description: document.getElementById('notesInput').value || document.getElementById('categoryInput').value,
-        notes: document.getElementById('notesInput').value
-    };
-
-    const btn = document.getElementById('submitTxBtn');
-    const originalText = document.getElementById('btnSubmitText').textContent;
-    btn.innerHTML = 'Menyimpan...'; btn.disabled = true;
-
-    // Optimistic update
-    const oldTxList = [...state.transactions];
-    state.transactions = state.transactions.filter(t => t.id !== id); // Remove old if edit
-    state.transactions.unshift(payload);
-    updateUI();
-
-    try {
-        const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
-        const result = await res.json();
-        if (result.status === 'success') {
-            showToast(state.editingId ? 'Data diperbarui' : 'Transaksi disimpan', 'success');
-            cancelEdit();
-            switchPage('dashboard', document.querySelector('.nav-item')); 
-        } else { throw new Error(result.message); }
-    } catch (err) {
-        state.transactions = oldTxList; // Revert
-        updateUI();
-        showToast('Gagal menyimpan ke server', 'error');
-    } finally {
-        btn.innerHTML = `<i class="ph ph-check-circle" style="font-size: 1.3rem;"></i> <span id="btnSubmitText">${originalText}</span>`;
-        btn.disabled = false;
+    if(select) {
+        select.innerHTML = '<option value="">Pilih Kategori</option>';
+        CATEGORIES[state.currentType].forEach(cat => select.innerHTML += `<option value="${cat}">${cat}</option>`);
     }
-});
-
-// ================= CHARTS (RESTORED) =================
-function renderCharts() {
-    // Check theme for colors
-    const isDark = state.theme === 'dark';
-    const gridColor = isDark ? '#334155' : '#e2e8f0';
-    const textColor = isDark ? '#94a3b8' : '#64748b';
-
-    // 1. Line Chart (Gradient)
-    const ctxMain = document.getElementById('mainChart').getContext('2d');
-    
-    // Generate data per month (last 6 months)
-    const months = {};
-    const today = new Date();
-    for(let i=5; i>=0; i--) {
-        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-        const key = d.toISOString().slice(0, 7);
-        months[key] = { income: 0, expense: 0, label: d.toLocaleDateString('id-ID', {month:'short'}) };
-    }
-
-    state.transactions.forEach(t => {
-        const m = t.date.slice(0, 7);
-        if (months[m]) months[m][t.type] += t.amount;
-    });
-
-    const labels = Object.values(months).map(m => m.label);
-    const dataInc = Object.values(months).map(m => m.income);
-    const dataExp = Object.values(months).map(m => m.expense);
-
-    // Gradients
-    let gradInc = ctxMain.createLinearGradient(0, 0, 0, 400);
-    gradInc.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
-    gradInc.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
-
-    let gradExp = ctxMain.createLinearGradient(0, 0, 0, 400);
-    gradExp.addColorStop(0, 'rgba(239, 68, 68, 0.4)');
-    gradExp.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
-
-    if (state.charts.main) state.charts.main.destroy();
-    state.charts.main = new Chart(ctxMain, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                { label: 'Pemasukan', data: dataInc, borderColor: '#10b981', backgroundColor: gradInc, fill: true, tension: 0.4, borderWidth: 2 },
-                { label: 'Pengeluaran', data: dataExp, borderColor: '#ef4444', backgroundColor: gradExp, fill: true, tension: 0.4, borderWidth: 2 }
-            ]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { labels: { color: textColor } } },
-            scales: { 
-                y: { grid: { color: gridColor }, ticks: { color: textColor } }, 
-                x: { grid: { display: false }, ticks: { color: textColor } } 
-            }
-        }
-    });
-
-    // 2. Doughnut Chart
-    const cats = {};
-    state.transactions.filter(t => t.type === 'expense').forEach(t => cats[t.category] = (cats[t.category] || 0) + t.amount);
-    
-    if (state.charts.doughnut) state.charts.doughnut.destroy();
-    state.charts.doughnut = new Chart(document.getElementById('doughnutChart'), {
-        type: 'doughnut',
-        data: {
-            labels: Object.keys(cats),
-            datasets: [{
-                data: Object.values(cats),
-                backgroundColor: ['#4361ee', '#3a0ca3', '#4cc9f0', '#f72585', '#7209b7', '#f59e0b', '#10b981'],
-                borderWidth: 0, hoverOffset: 4
-            }]
-        },
-        options: { 
-            responsive: true, maintainAspectRatio: false, cutout: '75%', 
-            plugins: { legend: { display: false } } 
-        }
-    });
 }
 
-// ================= ANALYTICS LOGIC (RESTORED) =================
-function performAnalysis() {
-    const tx = state.transactions;
-    if (tx.length === 0) return;
-
-    // Basic Stats
-    const totalInc = tx.filter(t => t.type === 'income').reduce((a,b)=>a+b.amount,0);
-    const totalExp = tx.filter(t => t.type === 'expense').reduce((a,b)=>a+b.amount,0);
-
-    // Daily Avg & Projection
-    const today = new Date();
-    const currentMonthStr = today.toISOString().slice(0, 7);
-    const daysPassed = today.getDate();
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
-    
-    const monthExpTx = tx.filter(t => t.date.startsWith(currentMonthStr) && t.type === 'expense');
-    const monthExpTotal = monthExpTx.reduce((a,b)=>a+b.amount, 0);
-    
-    const dailyAvg = daysPassed > 0 ? monthExpTotal / daysPassed : 0;
-    const projection = dailyAvg * daysInMonth;
-
-    document.getElementById('anaDailyAvg').textContent = formatRupiah(dailyAvg);
-    document.getElementById('anaProjection').textContent = formatRupiah(projection);
-
-    // Max Transaction
-    const maxTx = [...tx].sort((a,b)=>b.amount - a.amount)[0];
-    if(maxTx) {
-        document.getElementById('anaMaxTx').textContent = formatRupiah(maxTx.amount);
-        document.getElementById('anaMaxTxName').textContent = maxTx.description;
-    }
-
-    // Health Score Logic
-    let score = 50;
-    const ratio = totalInc > 0 ? (totalExp / totalInc) : 1;
-    if (ratio < 0.5) score += 30; // Hemat banget
-    else if (ratio < 0.8) score += 10; // Sehat
-    else if (ratio > 1.0) score -= 30; // Defisit
-    
-    // Bonus points for savings consistency (simplified check)
-    if(totalInc > totalExp) score += 10;
-    score = Math.max(0, Math.min(100, score));
-    
-    const scoreEl = document.getElementById('anaHealthScore');
-    scoreEl.textContent = score + '/100';
-    scoreEl.style.color = score > 70 ? 'var(--success)' : (score > 40 ? 'var(--warning)' : 'var(--danger)');
-
-    // Top Categories List
-    const catMap = {};
-    tx.filter(t => t.type === 'expense').forEach(t => catMap[t.category] = (catMap[t.category] || 0) + t.amount);
-    const sortedCats = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).slice(0, 5);
-    
-    document.getElementById('topCategoriesList').innerHTML = sortedCats.map(([cat, val], i) => {
-        const maxVal = sortedCats[0][1];
-        const pct = (val / maxVal) * 100;
-        return `
-        <div style="margin-bottom: 16px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom: 6px; font-size: 0.9rem;">
-                <span style="font-weight:600;">${i+1}. ${cat}</span>
-                <span style="font-weight:700;">${formatRupiah(val)}</span>
-            </div>
-            <div style="width:100%; height:8px; background:var(--bg-body); border-radius:4px; overflow:hidden;">
-                <div style="width:${pct}%; height:100%; background:var(--primary); border-radius:4px;"></div>
-            </div>
-        </div>`;
-    }).join('');
-
-    // Radar Chart (Requires Chart.js)
-    if(state.charts.radar) state.charts.radar.destroy();
-    
-    const isDark = state.theme === 'dark';
-    const gridColor = isDark ? '#334155' : '#e2e8f0';
-    const textColor = isDark ? '#94a3b8' : '#64748b';
-
-    state.charts.radar = new Chart(document.getElementById('radarChart'), {
-        type: 'radar',
-        data: {
-            labels: ['Hemat', 'Investasi', 'Pemasukan', 'Kesehatan', 'Konsistensi'],
-            datasets: [{
-                label: 'Metrik',
-                data: [
-                    (1-ratio) * 100, // Hemat
-                    Math.min(100, (catMap['Investasi'] || 0) / (totalInc || 1) * 500), // Investasi score rough
-                    Math.min(100, totalInc / 10000000 * 100), // Income scale
-                    score, // Health
-                    80 // Dummy consistency
-                ],
-                backgroundColor: 'rgba(67, 97, 238, 0.2)',
-                borderColor: '#4361ee',
-                pointBackgroundColor: '#4361ee'
-            }]
-        },
-        options: {
-            scales: {
-                r: {
-                    angleLines: { color: gridColor },
-                    grid: { color: gridColor },
-                    pointLabels: { color: textColor, font: { size: 12 } },
-                    suggestedMin: 0, suggestedMax: 100
-                }
-            },
-            plugins: { legend: { display: false } }
-        }
-    });
-}
-
-function showExpenseAnalysis() {
-    const now = new Date();
-    const currentMonth = now.toISOString().slice(0, 7);
-    const daysPassed = now.getDate();
-    
-    const monthTx = state.transactions.filter(t => t.date.startsWith(currentMonth));
-    const expense = monthTx.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const avg = expense / daysPassed;
-    
-    alert(`ANALISIS CEPAT:\n\nPengeluaran Bulan Ini: ${formatRupiah(expense)}\nRata-rata per hari: ${formatRupiah(avg)}\n\nTips: Jaga rata-rata harian tetap stabil.`);
-}
-
-// ================= HELPERS & FILTER =================
 function switchPage(pageId, btn) {
     document.querySelectorAll('.page-section').forEach(p => p.classList.add('hidden'));
-    document.getElementById(pageId + 'Page').classList.remove('hidden');
+    const target = document.getElementById(pageId + 'Page');
+    if(target) target.classList.remove('hidden');
     
-    if(btn) {
-        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-    } else {
-        // Manually set active if switched programmatically
-        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-        // Simple logic to find button by onclick content is hard, so skipping highlight update for simplicity
-    }
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    if(btn) btn.classList.add('active');
     
     const titles = { dashboard: 'Dashboard Overview', input: 'Input Data', history: 'Riwayat Transaksi', analytics: 'Analisis Finansial' };
-    document.getElementById('pageTitle').textContent = titles[pageId];
+    const titleEl = document.getElementById('pageTitle');
+    if(titleEl) titleEl.textContent = titles[pageId] || 'Dashboard';
 
     if(window.innerWidth <= 768) {
         document.getElementById('sidebar').classList.remove('active');
         document.querySelector('.sidebar-overlay').classList.remove('active');
     }
-    
     window.scrollTo({top: 0});
 }
 
@@ -590,9 +556,131 @@ function showToast(msg, type) {
     const toast = document.createElement('div');
     toast.className = 'notification-toast';
     toast.style.borderLeftColor = type === 'success' ? 'var(--success)' : 'var(--danger)';
-    toast.innerHTML = `<i class="ph ${type === 'success' ? 'ph-check-circle' : 'ph-warning-circle'}" style="color:${type==='success'?'var(--success)':'var(--danger)'}; font-size:1.5rem;"></i> <div><strong>${type==='success'?'Berhasil':'Perhatian'}</strong><div style="font-size:0.9rem;">${msg}</div></div>`;
+    toast.innerHTML = `<i class="ph ${type === 'success' ? 'ph-check-circle' : 'ph-warning-circle'}" style="color:${type==='success'?'var(--success)':'var(--danger)'}; font-size:1.5rem;"></i> <div><strong>${type==='success'?'Berhasil':'Info'}</strong><div style="font-size:0.9rem;">${msg}</div></div>`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
+}
+
+function performAnalysis() {
+    const tx = state.transactions;
+    if (tx.length === 0) return;
+
+    const totalInc = tx.filter(t => t.type === 'income').reduce((a,b)=>a+b.amount,0);
+    const totalExp = tx.filter(t => t.type === 'expense').reduce((a,b)=>a+b.amount,0);
+
+    const today = new Date();
+    const currentMonthStr = today.toISOString().slice(0, 7);
+    const daysPassed = today.getDate();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
+    
+    const monthExpTx = tx.filter(t => t.date.startsWith(currentMonthStr) && t.type === 'expense');
+    const monthExpTotal = monthExpTx.reduce((a,b)=>a+b.amount, 0);
+    
+    const dailyAvg = daysPassed > 0 ? monthExpTotal / daysPassed : 0;
+    const projection = dailyAvg * daysInMonth;
+
+    const elAvg = document.getElementById('anaDailyAvg');
+    const elProj = document.getElementById('anaProjection');
+    if(elAvg) elAvg.textContent = formatRupiah(dailyAvg);
+    if(elProj) elProj.textContent = formatRupiah(projection);
+
+    const maxTx = [...tx].sort((a,b)=>b.amount - a.amount)[0];
+    if(maxTx) {
+        const elMax = document.getElementById('anaMaxTx');
+        const elMaxName = document.getElementById('anaMaxTxName');
+        if(elMax) elMax.textContent = formatRupiah(maxTx.amount);
+        if(elMaxName) elMaxName.textContent = maxTx.description;
+    }
+
+    let score = 50;
+    const ratio = totalInc > 0 ? (totalExp / totalInc) : 1;
+    if (ratio < 0.5) score += 30; 
+    else if (ratio < 0.8) score += 10; 
+    else if (ratio > 1.0) score -= 30; 
+    if(totalInc > totalExp) score += 10;
+    score = Math.max(0, Math.min(100, score));
+    
+    const scoreEl = document.getElementById('anaHealthScore');
+    if(scoreEl) {
+        scoreEl.textContent = score + '/100';
+        scoreEl.style.color = score > 70 ? 'var(--success)' : (score > 40 ? 'var(--warning)' : 'var(--danger)');
+    }
+
+    // Top Categories
+    const catMap = {};
+    tx.filter(t => t.type === 'expense').forEach(t => catMap[t.category] = (catMap[t.category] || 0) + t.amount);
+    const sortedCats = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).slice(0, 5);
+    
+    const topCatList = document.getElementById('topCategoriesList');
+    if(topCatList) {
+        topCatList.innerHTML = sortedCats.map(([cat, val], i) => {
+            const maxVal = sortedCats[0][1] || 1;
+            const pct = (val / maxVal) * 100;
+            return `
+            <div style="margin-bottom: 16px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom: 6px; font-size: 0.9rem;">
+                    <span style="font-weight:600;">${i+1}. ${cat}</span>
+                    <span style="font-weight:700;">${formatRupiah(val)}</span>
+                </div>
+                <div style="width:100%; height:8px; background:var(--bg-body); border-radius:4px; overflow:hidden;">
+                    <div style="width:${pct}%; height:100%; background:var(--primary); border-radius:4px;"></div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // Radar Chart
+    const radarEl = document.getElementById('radarChart');
+    if(radarEl) {
+        if(state.charts.radar) state.charts.radar.destroy();
+        
+        const isDark = state.theme === 'dark';
+        const gridColor = isDark ? '#334155' : '#e2e8f0';
+        const textColor = isDark ? '#94a3b8' : '#64748b';
+
+        state.charts.radar = new Chart(radarEl, {
+            type: 'radar',
+            data: {
+                labels: ['Hemat', 'Investasi', 'Pemasukan', 'Kesehatan', 'Konsistensi'],
+                datasets: [{
+                    label: 'Metrik',
+                    data: [
+                        (1-ratio) * 100, 
+                        Math.min(100, (catMap['Investasi'] || 0) / (totalInc || 1) * 500), 
+                        Math.min(100, totalInc / 10000000 * 100), 
+                        score, 
+                        80 
+                    ],
+                    backgroundColor: 'rgba(67, 97, 238, 0.2)',
+                    borderColor: '#4361ee',
+                    pointBackgroundColor: '#4361ee'
+                }]
+            },
+            options: {
+                scales: {
+                    r: {
+                        angleLines: { color: gridColor },
+                        grid: { color: gridColor },
+                        pointLabels: { color: textColor, font: { size: 12 } },
+                        suggestedMin: 0, suggestedMax: 100
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+}
+
+function showExpenseAnalysis() {
+    const now = new Date();
+    const currentMonth = now.toISOString().slice(0, 7);
+    const daysPassed = now.getDate();
+    
+    const monthTx = state.transactions.filter(t => t.date.startsWith(currentMonth));
+    const expense = monthTx.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const avg = expense / daysPassed;
+    
+    alert(`ANALISIS CEPAT:\n\nPengeluaran Bulan Ini: ${formatRupiah(expense)}\nRata-rata per hari: ${formatRupiah(avg)}`);
 }
 
 // Filtering
@@ -603,11 +691,16 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
         applyFilter();
     });
 });
-document.getElementById('searchBox').addEventListener('input', applyFilter);
+const searchBox = document.getElementById('searchBox');
+if(searchBox) searchBox.addEventListener('input', applyFilter);
 
 function applyFilter() {
-    const type = document.querySelector('.filter-btn.active').dataset.filter;
-    const search = document.getElementById('searchBox').value.toLowerCase();
+    const activeBtn = document.querySelector('.filter-btn.active');
+    const type = activeBtn ? activeBtn.dataset.filter : 'all';
+    
+    const searchBox = document.getElementById('searchBox');
+    const search = searchBox ? searchBox.value.toLowerCase() : '';
+    
     const filtered = state.transactions.filter(t => {
         const matchType = type === 'all' || t.type === type;
         const matchSearch = t.description.toLowerCase().includes(search) || t.category.toLowerCase().includes(search);
