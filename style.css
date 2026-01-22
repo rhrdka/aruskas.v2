@@ -260,7 +260,7 @@ body {
 
 /* ================= AUTH ================= */
 .auth-overlay {
-    position: fixed; inset: 0; background: linear-gradient(135deg, #f0f9ff 0%, #cbebff 100%);
+    position: fixed; inset: 0; background: #ffffff 100%);
     z-index: 1000; display: grid; place-items: center; padding: 20px;
 }
 [data-theme="dark"] .auth-overlay { background: linear-gradient(135deg, #020617 0%, #1e293b 100%); }
